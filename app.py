@@ -95,8 +95,10 @@ def ask_openai(user_text):
         result = post_json("https://api.openai.com/v1/responses", OPENAI_API_KEY, payload)
     except error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
+        print(f"OpenAI API request failed: {exc.code} {detail[:300]}", flush=True)
         return f"OpenAI API request failed. Status code: {exc.code}\n{detail[:500]}"
     except Exception as exc:
+        print(f"OpenAI API connection failed: {exc}", flush=True)
         return f"OpenAI API connection failed: {exc}"
 
     if result.get("output_text"):
@@ -112,6 +114,7 @@ def ask_openai(user_text):
 
 def reply_to_slack(channel, thread_ts, text):
     if not SLACK_BOT_TOKEN:
+        print("Slack reply skipped: SLACK_BOT_TOKEN is missing", flush=True)
         return
 
     payload = {
@@ -122,7 +125,11 @@ def reply_to_slack(channel, thread_ts, text):
         payload["thread_ts"] = thread_ts
 
     try:
-        post_json("https://slack.com/api/chat.postMessage", SLACK_BOT_TOKEN, payload)
+        result = post_json("https://slack.com/api/chat.postMessage", SLACK_BOT_TOKEN, payload)
+        if not result.get("ok"):
+            print(f"Slack reply failed: {result}", flush=True)
+            return
+        print(f"Slack reply sent: channel={channel}", flush=True)
     except Exception as exc:
         print(f"Slack reply failed: {exc}", flush=True)
 
@@ -133,14 +140,17 @@ def handle_event(event):
 
     event_type = event.get("type")
     if event_type not in ("app_mention", "message"):
+        print(f"Ignoring unsupported event: {event_type}", flush=True)
         return
 
     channel = event.get("channel")
     text = event.get("text", "").strip()
     thread_ts = event.get("thread_ts") or event.get("ts")
     if not channel or not text:
+        print(f"Ignoring event with missing channel/text: {event}", flush=True)
         return
 
+    print(f"Handling Slack event: type={event_type} channel={channel}", flush=True)
     answer = ask_openai(text)
     reply_to_slack(channel, thread_ts, answer)
 
@@ -174,6 +184,7 @@ class SlackHandler(BaseHTTPRequestHandler):
             return
 
         if not verify_slack_signature(self.headers, raw_body):
+            print("Slack signature verification failed", flush=True)
             text_response(self, 401, "Invalid Slack signature")
             return
 
