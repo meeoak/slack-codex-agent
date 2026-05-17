@@ -163,10 +163,6 @@ class SlackHandler(BaseHTTPRequestHandler):
             text_response(self, 404, "Not found")
             return
 
-        if not verify_slack_signature(self.headers, raw_body):
-            text_response(self, 401, "Invalid Slack signature")
-            return
-
         try:
             payload = json.loads(raw_body.decode("utf-8"))
         except json.JSONDecodeError:
@@ -174,7 +170,11 @@ class SlackHandler(BaseHTTPRequestHandler):
             return
 
         if payload.get("type") == "url_verification":
-            json_response(self, 200, {"challenge": payload.get("challenge", "")})
+            text_response(self, 200, payload.get("challenge", ""))
+            return
+
+        if not verify_slack_signature(self.headers, raw_body):
+            text_response(self, 401, "Invalid Slack signature")
             return
 
         if payload.get("type") == "event_callback":
